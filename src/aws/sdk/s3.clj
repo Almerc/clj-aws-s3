@@ -46,7 +46,7 @@
   "Create an AmazonS3Client instance from a map of credentials.
 
 Map may also contain the configuration keys :conn-timeout,
-:socket-timeout, :max-conns, and :max-retries."
+:socket-timeout, :max-conns, :max-retries, :proxy-port,:proxy-host, :proxy-username & :proxy-password  "
   [cred]
   (let [client-configuration (ClientConfiguration.)]
     (when-let [conn-timeout (:conn-timeout cred)]
@@ -57,6 +57,14 @@ Map may also contain the configuration keys :conn-timeout,
       (.setMaxErrorRetry client-configuration max-retries))
     (when-let [max-conns (:max-conns cred)]
       (.setMaxConnections client-configuration max-conns))
+    (when-let [proxy-port (:proxy-port cred)]
+      (.setProxyPort client-configuration proxy-port))
+    (when-let [proxy-host (:proxy-host cred)]
+      (.setProxyHost client-configuration proxy-host))
+    (when-let [proxy-username (:proxy-username cred)]
+      (.setProxyUsername client-configuration proxy-username))
+    (when-let [proxy-password (:proxy-password cred)]
+      (.setProxyPassword client-configuration proxy-password))
     (let [aws-creds (BasicAWSCredentials. (:access-key cred) (:secret-key cred))
           client    (AmazonS3Client. aws-creds client-configuration)]
       (when-let [endpoint (:endpoint cred)]
@@ -198,26 +206,26 @@ Map may also contain the configuration keys :conn-timeout,
     (.putObject (s3-client cred) req)))
 
 (defn- initiate-multipart-upload
-  [cred bucket key] 
-  (.getUploadId (.initiateMultipartUpload 
-                  (s3-client cred) 
+  [cred bucket key]
+  (.getUploadId (.initiateMultipartUpload
+                  (s3-client cred)
                   (InitiateMultipartUploadRequest. bucket key))))
 
 (defn- abort-multipart-upload
-  [{cred :cred bucket :bucket key :key upload-id :upload-id}] 
-  (.abortMultipartUpload 
-    (s3-client cred) 
+  [{cred :cred bucket :bucket key :key upload-id :upload-id}]
+  (.abortMultipartUpload
+    (s3-client cred)
     (AbortMultipartUploadRequest. bucket key upload-id)))
 
 (defn- complete-multipart-upload
-  [{cred :cred bucket :bucket key :key upload-id :upload-id e-tags :e-tags}] 
+  [{cred :cred bucket :bucket key :key upload-id :upload-id e-tags :e-tags}]
   (.completeMultipartUpload
     (s3-client cred)
     (CompleteMultipartUploadRequest. bucket key upload-id e-tags)))
 
 (defn- upload-part
   [{cred :cred bucket :bucket key :key upload-id :upload-id
-    part-size :part-size offset :offset file :file}] 
+    part-size :part-size offset :offset file :file}]
   (.getPartETag
    (.uploadPart
     (s3-client cred)
@@ -232,8 +240,8 @@ Map may also contain the configuration keys :conn-timeout,
 
 (defn put-multipart-object
   "Do a multipart upload of a file into a S3 bucket at the specified key.
-  The value must be a java.io.File object.  The entire file is uploaded 
-  or not at all.  If an exception happens at any time the upload is aborted 
+  The value must be a java.io.File object.  The entire file is uploaded
+  or not at all.  If an exception happens at any time the upload is aborted
   and the exception is rethrown. The size of the parts and the number of
   threads uploading the parts can be configured in the last argument as a
   map with the following keys:
@@ -252,8 +260,8 @@ Map may also contain the configuration keys :conn-timeout,
     (try
       (complete-multipart-upload
         (assoc upload :e-tags (map #(.get %) (.invokeAll pool tasks))))
-      (catch Exception ex 
-        (abort-multipart-upload upload) 
+      (catch Exception ex
+        (abort-multipart-upload upload)
         (.shutdown pool)
         (throw ex))
       (finally (.shutdown pool)))))
